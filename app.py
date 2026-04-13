@@ -126,30 +126,31 @@ with st.sidebar:
             label_visibility="collapsed"
         )
         
-        if "免费" in use_mode:
-            # 免费模式
-            remaining = get_remaining()
-            st.markdown(f"""
-            <div style="background:#1a2e1a;padding:12px;border-radius:8px;border:1px solid #51cf66;">
-                ✅ <b>免费体验模式</b><br>
-                📅 今日剩余：<b style="color:#51cf66;font-size:18px;">{remaining}</b> 次
-            </div>
-            """, unsafe_allow_html=True)
-            api_key_to_use = get_preset_key()
-            is_free_mode = True
-        else:
-            # 自己的 Key
-            user_key = st.text_input("你的 API Key", type="password", placeholder="sk-xxxxxxxx")
-            api_key_to_use = user_key.strip() if user_key else None
-            is_free_mode = False
-            
-            if api_key_to_use:
-                st.markdown("""
-                <div style="background:#1a1a2e;padding:12px;border-radius:8px;border:1px solid #e94560;">
-                    ✅ <b>自定义 Key 模式</b><br>
-                    ♾️ 无使用次数限制
-                </div>
-                """, unsafe_allow_html=True)
+if "免费" in use_mode:
+    # 免费模式
+    remaining = get_remaining()
+    st.markdown(f"""
+    <div style="background:linear-gradient(135deg, #1a2030 0%, #252a40 100%);padding:15px;border-radius:10px;border:1px solid #4dabf7;">
+        ✅ <b style="color:#fff;">免费体验模式</b><br>
+        <span style="color:#aaa;">今日剩余：</span><b style="color:#4dabf7;font-size:20px;">{remaining}</b><span style="color:#aaa;"> 次</span>
+    </div>
+    """, unsafe_allow_html=True)
+    api_key_to_use = get_preset_key()
+    is_free_mode = True
+else:
+    # 自己的 Key
+    user_key = st.text_input("你的 API Key", type="password", placeholder="sk-xxxxxxxx")
+    api_key_to_use = user_key.strip() if user_key else None
+    is_free_mode = False
+    
+    if api_key_to_use:
+        st.markdown("""
+        <div style="background:linear-gradient(135deg, #1a2030 0%, #252a40 100%);padding:15px;border-radius:10px;border:1px solid #e94560;">
+            ✅ <b style="color:#fff;">自定义 Key 模式</b><br>
+            <span style="color:#aaa;">♾️ 无使用次数限制</span>
+        </div>
+        """, unsafe_allow_html=True)
+
     else:
         # 无预设 Key，只能用自己的
         st.warning("⚠️ 免费额度暂不可用\n请使用你自己的 API Key")
