@@ -74,7 +74,7 @@ with st.sidebar:
     }
     selected = model_options[api_provider]
     st.markdown("---")
-    topic_count = st.slider("🎯 生成数量", 5, 15, 10, 5)
+    topic_count = st.slider("🎯 生成数量", 1, 10, 5)
 
 # ─────────────────────────────────────────
 # 主表单
