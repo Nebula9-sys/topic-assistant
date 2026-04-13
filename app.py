@@ -61,20 +61,79 @@ hr { border-color: #333; margin: 24px 0; }
 """, unsafe_allow_html=True)
 
 # ─────────────────────────────────────────
+# 次数限制功能
+# ─────────────────────────────────────────
+def check_usage_limit():
+    """检查今日使用次数"""
+    today = str(date.today())
+    
+    # 初始化使用记录
+    if "usage_date" not in st.session_state:
+        st.session_state["usage_date"] = today
+        st.session_state["usage_count"] = 0
+    
+    # 如果是新的一天，重置计数
+    if st.session_state["usage_date"] != today:
+        st.session_state["usage_date"] = today
+        st.session_state["usage_count"] = 0
+    
+    return st.session_state["usage_count"]
+def increment_usage():
+    """增加使用次数"""
+    st.session_state["usage_count"] += 1
+def get_remaining_uses():
+    """获取剩余次数"""
+    count = check_usage_limit()
+    limit = st.secrets.get("DAILY_LIMIT", 3) if hasattr(st, 'secrets') else 3
+    return max(0, limit - count)
+
+
+# ─────────────────────────────────────────
 # 侧边栏
 # ─────────────────────────────────────────
 with st.sidebar:
     st.title("⚙️ 配置")
     st.markdown("---")
-    api_key = st.text_input("🔑 API Key", type="password", placeholder="sk-xxxxxxxx")
-    api_provider = st.radio("API 提供商", ["DeepSeek（推荐）", "OpenAI"], index=0)
-    model_options = {
-        "DeepSeek（推荐）": {"base_url": "https://api.deepseek.com", "model": "deepseek-chat"},
-        "OpenAI": {"base_url": "https://api.openai.com/v1", "model": "gpt-4o-mini"}
-    }
-    selected = model_options[api_provider]
+    
+    # API Key 输入（可选）
+    user_api_key = st.text_input("🔑 你的 API Key（选填）", type="password", placeholder="有自己的就填上")
+    
+    # 判断使用模式
+    has_own_key = bool(user_api_key)
+    
+    if has_own_key:
+        st.success("✅ 使用你的 Key，无次数限制")
+        api_key_to_use = user_api_key
+    else:
+        # 使用预设 Key
+        if hasattr(st, 'secrets') and 'API_KEY' in st.secrets:
+            remaining = get_remaining_uses()
+            st.info(f"🎁 使用预设 Key\n今日剩余：**{remaining}** 次")
+            api_key_to_use = st.secrets['API_KEY']
+        else:
+            st.warning("⚠️ 请填入你自己的 API Key\n获取：platform.deepseek.com")
+            api_key_to_use = None
+    
     st.markdown("---")
+    
+    # 改进：1-10 自由选择
     topic_count = st.slider("🎯 生成数量", 1, 10, 5)
+    
+    st.markdown("---")
+    
+    # 使用说明（根据模式显示不同内容）
+    if not has_own_key:
+        st.markdown("""
+        **💡 如何获取 API Key**
+        
+        1. 访问 [platform.deepseek.com](https://platform.deepseek.com)
+        2. 注册账号
+        3. 充值（deepseek官网充值，不涉及其他）
+        4. 创建 API Key
+        5. 粘贴到上方输入框
+        
+        或直接使用预设 Key（每日有限次数）
+        """)
 
 # ─────────────────────────────────────────
 # 主表单
