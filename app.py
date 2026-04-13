@@ -2,6 +2,8 @@ import streamlit as st
 from openai import OpenAI
 import json
 import re
+import time
+import random
 
 # ─────────────────────────────────────────
 # 页面配置
@@ -128,18 +130,15 @@ def build_prompt(niche, audience, platform, style, hot, avoid, count):
 """
 
 # ─────────────────────────────────────────
-# 清理文本（修复版）
+# 清理文本
 # ─────────────────────────────────────────
 def clean_text(text):
     if not text:
         return ""
-    # 如果是列表，转成字符串
     if isinstance(text, list):
         text = "、".join(str(item) for item in text)
-    # 确保是字符串
     if not isinstance(text, str):
         text = str(text)
-    # 去掉 markdown 符号
     text = re.sub(r'\*\*(.+?)\*\*', r'\1', text)
     text = re.sub(r'\*(.+?)\*', r'\1', text)
     text = text.replace('```', '').replace('`', '')
@@ -172,7 +171,6 @@ def render_card(topic):
     diff_map = {"简单": "easy", "中等": "medium", "较难": "hard"}
     diff_cls = diff_map.get(topic.get("difficulty"), "medium")
     score = topic.get("score", 70)
-
     score_label = f"🔥 {score}分" if score >= 90 else f"⚡ {score}分" if score >= 80 else f"💡 {score}分"
 
     title = clean_text(topic.get("title", ""))
@@ -199,6 +197,27 @@ def render_card(topic):
     """, unsafe_allow_html=True)
 
 # ─────────────────────────────────────────
+# 趣味提示语
+# ─────────────────────────────────────────
+fun_tips = [
+    "🔍 正在分析同类账号爆款规律...",
+    "📊 正在计算选题爆款指数...",
+    "🎯 正在匹配目标用户痛点...",
+    "✂️ 正在优化前3秒钩子话术...",
+    "🧠 AI 正在头脑风暴中...",
+    "💡 正在提炼核心创意角度...",
+]
+
+fun_facts = [
+    "💡 抖音完播率超过 30% 就算优秀",
+    "💡 前 3 秒决定 80% 的完播率",
+    "💡 标题带数字的点击率提升 15%",
+    "💡 晚上 8-10 点是最佳发布时间",
+    "💡 情绪共鸣类内容传播力最强",
+    "💡 热点话题要 24 小时内跟进",
+]
+
+# ─────────────────────────────────────────
 # 生成按钮
 # ─────────────────────────────────────────
 if st.button("✨ 开始生成", type="primary", use_container_width=True):
@@ -212,18 +231,43 @@ if st.button("✨ 开始生成", type="primary", use_container_width=True):
         st.error("❌ 请填写目标受众")
         st.stop()
 
-    with st.spinner("🤖 AI 正在生成选题..."):
-        try:
-            prompt = build_prompt(account_niche, target_audience, platform, content_style, hot_keywords, avoid_topics, topic_count)
-            topics = generate_topics(api_key, selected["base_url"], selected["model"], prompt)
-            st.session_state["topics"] = topics
-            st.session_state["last_niche"] = account_niche
-        except json.JSONDecodeError:
-            st.error("❌ AI 返回格式错误，请重试")
-            st.stop()
-        except Exception as e:
-            st.error(f"❌ 出错了：{e}")
-            st.stop()
+    progress_bar = st.progress(0)
+    status_text = st.empty()
+    tip_box = st.empty()
+
+    for i in range(4):
+        progress_bar.progress((i + 1) * 25)
+        status_text.markdown(f"### {fun_tips[i % len(fun_tips)]}")
+        tip_box.info(fun_facts[i % len(fun_facts)])
+        time.sleep(0.5)
+
+    status_text.markdown("### 🤖 AI 正在生成选题...")
+    tip_box.empty()
+
+    try:
+        prompt = build_prompt(account_niche, target_audience, platform, content_style, hot_keywords, avoid_topics, topic_count)
+        topics = generate_topics(api_key, selected["base_url"], selected["model"], prompt)
+        
+        progress_bar.progress(100)
+        status_text.markdown("### ✅ 生成完成！")
+        time.sleep(0.3)
+        
+        progress_bar.empty()
+        status_text.empty()
+        
+        st.session_state["topics"] = topics
+        st.session_state["last_niche"] = account_niche
+        
+    except json.JSONDecodeError:
+        progress_bar.empty()
+        status_text.empty()
+        st.error("❌ AI 返回格式错误，请重试")
+        st.stop()
+    except Exception as e:
+        progress_bar.empty()
+        status_text.empty()
+        st.error(f"❌ 出错了：{e}")
+        st.stop()
 
 # ─────────────────────────────────────────
 # 展示结果
