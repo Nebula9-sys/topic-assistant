@@ -49,55 +49,64 @@ st.markdown("""
 .label { color: #888; font-size: 13px; margin-top: 12px; margin-bottom: 4px; }
 .value { color: #ddd; font-size: 14px; line-height: 1.7; }
 hr { border-color: #333; margin: 24px 0; }
+
+/* 侧边栏样式 */
+.mode-card {
+    background: #1a1a2e;
+    border: 1px solid #333;
+    border-radius: 10px;
+    padding: 15px;
+    margin: 10px 0;
+}
+.mode-card.active {
+    border-color: #e94560;
+    background: linear-gradient(135deg, #1a1a2e 0%, #2a1a3e 100%);
+}
 </style>
 """, unsafe_allow_html=True)
 
 # ─────────────────────────────────────────
 # 次数限制功能
 # ─────────────────────────────────────────
-def get_daily_limit():
-    """获取每日限制次数"""
-    try:
-        if hasattr(st, 'secrets') and 'DAILY_LIMIT' in st.secrets:
-            return int(st.secrets['DAILY_LIMIT'])
-    except:
-        pass
-    return 3  # 默认每天3次
+DAILY_LIMIT = 3  # 直接写死在代码里，简单明了
 
-def check_usage_limit():
+def check_usage_count():
     """检查今日使用次数"""
     today = str(date.today())
     
-    # 初始化
     if "usage_date" not in st.session_state:
         st.session_state["usage_date"] = today
         st.session_state["usage_count"] = 0
     
-    # 新的一天重置
     if st.session_state["usage_date"] != today:
         st.session_state["usage_date"] = today
         st.session_state["usage_count"] = 0
     
     return st.session_state["usage_count"]
 
-def increment_usage():
+def add_usage_count():
     """增加使用次数"""
     st.session_state["usage_count"] += 1
 
-def get_remaining_uses():
+def get_remaining():
     """获取剩余次数"""
-    count = check_usage_limit()
-    limit = get_daily_limit()
-    return max(0, limit - count)
+    used = check_usage_count()
+    return max(0, DAILY_LIMIT - used)
 
-def get_preset_api_key():
-    """获取预设的API Key"""
+# ─────────────────────────────────────────
+# 获取预设 API Key（从 Secrets）
+# ─────────────────────────────────────────
+def get_preset_key():
+    """尝试从 Secrets 获取预设 Key"""
     try:
         if hasattr(st, 'secrets') and 'API_KEY' in st.secrets:
             return st.secrets['API_KEY']
     except:
         pass
     return None
+
+# 预设 Key 是否可用
+PRESET_KEY_AVAILABLE = get_preset_key() is not None
 
 # ─────────────────────────────────────────
 # 侧边栏
@@ -106,63 +115,98 @@ with st.sidebar:
     st.title("⚙️ 配置")
     st.markdown("---")
     
-    # 用户自己的 API Key（可选）
-    user_api_key = st.text_input("🔑 你的 API Key（选填）", type="password", placeholder="有自己的就填上")
+    # 模式选择
+    st.markdown("### 🔑 选择使用模式")
     
-    # 判断使用模式
-    has_own_key = bool(user_api_key.strip())
-    preset_key = get_preset_api_key()
-    
-    if has_own_key:
-        st.success("✅ 使用你的 Key\n无次数限制")
-        api_key_to_use = user_api_key.strip()
-    elif preset_key:
-        remaining = get_remaining_uses()
-        st.info(f"🎁 使用预设 Key\n今日剩余：**{remaining}** 次")
-        api_key_to_use = preset_key
+    if PRESET_KEY_AVAILABLE:
+        # 有预设 Key，显示两种选择
+        use_mode = st.radio(
+            "使用方式",
+            ["🎁 免费体验（每日3次）", "🔑 使用我的 API Key"],
+            label_visibility="collapsed"
+        )
+        
+        if "免费" in use_mode:
+            # 免费模式
+            remaining = get_remaining()
+            st.markdown(f"""
+            <div style="background:#1a2e1a;padding:12px;border-radius:8px;border:1px solid #51cf66;">
+                ✅ <b>免费体验模式</b><br>
+                📅 今日剩余：<b style="color:#51cf66;font-size:18px;">{remaining}</b> 次
+            </div>
+            """, unsafe_allow_html=True)
+            api_key_to_use = get_preset_key()
+            is_free_mode = True
+        else:
+            # 自己的 Key
+            user_key = st.text_input("你的 API Key", type="password", placeholder="sk-xxxxxxxx")
+            api_key_to_use = user_key.strip() if user_key else None
+            is_free_mode = False
+            
+            if api_key_to_use:
+                st.markdown("""
+                <div style="background:#1a1a2e;padding:12px;border-radius:8px;border:1px solid #e94560;">
+                    ✅ <b>自定义 Key 模式</b><br>
+                    ♾️ 无使用次数限制
+                </div>
+                """, unsafe_allow_html=True)
     else:
-        st.warning("⚠️ 请填入你的 API Key\n获取：platform.deepseek.com")
-        api_key_to_use = None
+        # 无预设 Key，只能用自己的
+        st.warning("⚠️ 免费额度暂不可用\n请使用你自己的 API Key")
+        st.markdown("---")
+        user_key = st.text_input("🔑 你的 API Key", type="password", placeholder="sk-xxxxxxxx")
+        api_key_to_use = user_key.strip() if user_key else None
+        is_free_mode = False
+        
+        if api_key_to_use:
+            st.success("✅ 已配置，可无限使用")
     
     st.markdown("---")
     
-    # 生成数量：1-10
+    # 生成数量
     topic_count = st.slider("🎯 生成数量", 1, 10, 5)
     
     st.markdown("---")
     
-    if not has_own_key:
+    # 使用说明
+    with st.expander("💡 如何获取 API Key"):
         st.markdown("""
-**💡 如何获取 API Key**
-
-1. 访问 [platform.deepseek.com](https://platform.deepseek.com)
-2. 注册并充值（deeseek官网充值，不涉及其他，1元够用很久）
-3. 创建 API Key
-4. 粘贴到上方输入框
+        **步骤：**
+        
+        1. 访问 [DeepSeek 开放平台](https://platform.deepseek.com)
+        2. 注册账号
+        3. 充值（官网充值，1元可用很久）
+        4. 点击「API Keys」→「创建 API Key」
+        5. 复制 Key 粘贴到上方输入框
+        
+        **为什么用 DeepSeek？**
+        - 便宜：生成 100 次约 0.3 元
+        - 中文质量好
+        - 速度快
         """)
 
 # ─────────────────────────────────────────
 # 主表单
 # ─────────────────────────────────────────
 st.title("🔥 爆款选题助手")
-st.markdown("输入账号定位，AI 生成高潜力选题")
+st.markdown("输入账号定位，AI 帮你生成高潜力的短视频选题")
 st.markdown("---")
 
 col1, col2 = st.columns(2)
 
 with col1:
-    account_niche = st.text_input("📌 账号定位", placeholder="例：职场干货、美食探店")
-    target_audience = st.text_input("👥 目标受众", placeholder="例：25-35岁职场人")
-    platform = st.selectbox("📱 平台", ["抖音", "小红书", "视频号", "B站", "快手", "全平台"])
+    account_niche = st.text_input("📌 账号定位", placeholder="例：职场干货、美食探店、情感治愈")
+    target_audience = st.text_input("👥 目标受众", placeholder="例：25-35岁职场女性、大学生")
+    platform = st.selectbox("📱 发布平台", ["抖音", "小红书", "视频号", "B站", "快手", "全平台"])
 
 with col2:
     content_style = st.multiselect(
-        "🎨 内容风格",
+        "🎨 内容风格（可多选）",
         ["干货知识", "搞笑幽默", "情感共鸣", "测评种草", "Vlog记录", "剧情反转", "真实故事", "科普解析", "励志正能量"],
         default=["干货知识"]
     )
-    hot_keywords = st.text_input("🌡️ 热点关键词（选填）", placeholder="例：AI副业")
-    avoid_topics = st.text_input("🚫 避免方向（选填）", placeholder="例：不出镜")
+    hot_keywords = st.text_input("🌡️ 热点关键词（选填）", placeholder="例：AI副业、情绪价值")
+    avoid_topics = st.text_input("🚫 避免方向（选填）", placeholder="例：不想出镜")
 
 st.markdown("---")
 
@@ -171,35 +215,37 @@ st.markdown("---")
 # ─────────────────────────────────────────
 def build_prompt(niche, audience, platform, style, hot, avoid, count):
     return f"""
-你是短视频爆款策划专家。
+你是短视频爆款策划专家，擅长分析平台规律、挖掘用户痛点。
 
-账号定位：{niche}
-目标受众：{audience}
-平台：{platform}
-风格：{"、".join(style) if style else "不限"}
-热点：{hot or "无"}
-规避：{avoid or "无"}
+## 账号信息
+- 定位：{niche}
+- 受众：{audience}
+- 平台：{platform}
+- 风格：{"、".join(style) if style else "不限"}
+- 热点：{hot or "暂无"}
+- 规避：{avoid or "无"}
 
-生成 {count} 个选题，严格返回 JSON 数组：
+## 任务
+生成 {count} 个选题，严格返回 JSON 数组，格式：
 
 [
   {{
     "id": 1,
-    "title": "视频标题",
-    "angle": "切入角度",
-    "hook": "前3秒开场话术",
-    "outline": "内容大纲",
+    "title": "视频标题（有冲击力，20字内）",
+    "angle": "切入角度（差异化视角）",
+    "hook": "前3秒开场话术（直接可用）",
+    "outline": "内容大纲（3-4个要点）",
     "score": 85,
     "difficulty": "简单",
-    "tip": "平台建议"
+    "tip": "针对{platform}的发布建议"
   }}
 ]
 
-要求：
-- title 纯文本，不用markdown格式
-- score 是60-99整数
-- difficulty 只能是：简单/中等/较难
-- outline 和 hook 用字符串
+## 要求
+- title：纯文本，不用markdown，要能引发好奇或共鸣
+- score：60-99 整数，客观评估爆款潜力
+- difficulty：只能填「简单」「中等」「较难」
+- hook：口语化，能直接当脚本用
 """
 
 # ─────────────────────────────────────────
@@ -250,7 +296,7 @@ def render_card(topic):
     """, unsafe_allow_html=True)
 
 # ─────────────────────────────────────────
-# 趣味知识
+# 趣味知识（每150字更换一次）
 # ─────────────────────────────────────────
 fun_facts = [
     "💡 抖音完播率超过 30% 就算优秀",
@@ -261,15 +307,20 @@ fun_facts = [
     "💡 热点话题要 24 小时内跟进",
     "💡 评论区互动率高的视频更容易爆",
     "💡 7-15 秒的视频完播率最高",
+    "💡 封面图点击率差异可达 3 倍",
+    "💡 第一条评论置顶能提升互动率",
 ]
 
 # ─────────────────────────────────────────
 # 生成按钮
 # ─────────────────────────────────────────
-if st.button("✨ 开始生成", type="primary", use_container_width=True):
+if st.button("✨ 开始生成选题", type="primary", use_container_width=True):
     # 检查 API Key
     if not api_key_to_use:
-        st.error("❌ 请先填入 API Key，或联系开发者配置预设 Key")
+        if PRESET_KEY_AVAILABLE:
+            st.error("❌ 出错了，请刷新页面重试")
+        else:
+            st.error("❌ 请先填入你的 API Key")
         st.stop()
     
     # 检查输入
@@ -280,21 +331,21 @@ if st.button("✨ 开始生成", type="primary", use_container_width=True):
         st.error("❌ 请填写目标受众")
         st.stop()
     
-    # 检查次数限制（仅预设 Key）
-    if not has_own_key and preset_key:
-        remaining = get_remaining_uses()
+    # 检查次数（免费模式）
+    if is_free_mode:
+        remaining = get_remaining()
         if remaining <= 0:
-            st.error("❌ 今日次数已用完，请明天再来，或填入你自己的 API Key")
+            st.error("❌ 今日免费次数已用完\n明天再来，或使用你自己的 API Key（无限次数）")
             st.stop()
 
     # 状态显示
     status_container = st.container()
     
     with status_container:
-        status_markdown = st.empty()
+        status_text = st.empty()
         tip_box = st.empty()
         
-        status_markdown.markdown("### 🤖 AI 正在思考...")
+        status_text.markdown("### 🤖 AI 正在思考...")
         tip_box.info("💡 生成需要 10-20 秒，请耐心等待")
 
     try:
@@ -306,7 +357,7 @@ if st.button("✨ 开始生成", type="primary", use_container_width=True):
         response = client.chat.completions.create(
             model="deepseek-chat",
             messages=[
-                {"role": "system", "content": "你是爆款选题专家，只返回JSON数组。"},
+                {"role": "system", "content": "你是爆款选题专家，只返回JSON数组，无其他文字。"},
                 {"role": "user", "content": prompt}
             ],
             stream=True,
@@ -314,7 +365,7 @@ if st.button("✨ 开始生成", type="primary", use_container_width=True):
             max_tokens=4000
         )
         
-        # 接收内容
+        # 接收内容（每150字换提示）
         full_content = ""
         char_count = 0
         tip_index = 0
@@ -325,8 +376,9 @@ if st.button("✨ 开始生成", type="primary", use_container_width=True):
                 full_content += content
                 char_count += len(content)
                 
-                status_markdown.markdown(f"### ✍️ 正在生成... 已写出 **{char_count}** 字")
+                status_text.markdown(f"### ✍️ 正在生成... 已写出 **{char_count}** 字")
                 
+                # 每 150 字换一个提示
                 if char_count // 150 > tip_index:
                     tip_index = char_count // 150
                     tip_box.info(fun_facts[tip_index % len(fun_facts)])
@@ -339,12 +391,12 @@ if st.button("✨ 开始生成", type="primary", use_container_width=True):
         
         topics = json.loads(raw.strip())
         
-        # 记录使用
-        if not has_own_key and preset_key:
-            increment_usage()
+        # 记录使用次数
+        if is_free_mode:
+            add_usage_count()
         
         # 完成
-        status_markdown.markdown("### ✅ 生成完成！")
+        status_text.markdown("### ✅ 生成完成！")
         tip_box.success(f"🎉 成功生成 {len(topics)} 个选题")
         time.sleep(0.5)
         status_container.empty()
@@ -355,7 +407,7 @@ if st.button("✨ 开始生成", type="primary", use_container_width=True):
         
     except json.JSONDecodeError:
         status_container.empty()
-        st.error("❌ AI 返回格式错误，请重试")
+        st.error("❌ AI 返回格式异常，请重试")
         st.stop()
     except Exception as e:
         status_container.empty()
@@ -382,7 +434,7 @@ if "topics" in st.session_state:
 
     st.markdown("---")
 
-    sort_opt = st.radio("排序", ["按爆款指数", "按难度"], horizontal=True)
+    sort_opt = st.radio("排序方式", ["按爆款指数", "按难度"], horizontal=True)
     sorted_topics = topics.copy()
     if sort_opt == "按爆款指数":
         sorted_topics.sort(key=lambda x: x.get("score", 0), reverse=True)
@@ -393,13 +445,15 @@ if "topics" in st.session_state:
     for t in sorted_topics:
         render_card(t)
 
-    export = f"# {niche} 选题清单\n\n"
+    # 导出
+    export = f"# {niche} — 爆款选题清单\n\n"
     for t in topics:
         export += f"## {t['id']}. {clean_text(t.get('title',''))}\n"
-        export += f"- 指数：{t.get('score')}分 | 难度：{t.get('difficulty')}\n"
-        export += f"- 角度：{clean_text(t.get('angle',''))}\n"
-        export += f"- 钩子：{clean_text(t.get('hook',''))}\n"
-        export += f"- 大纲：{clean_text(t.get('outline',''))}\n\n"
+        export += f"- 爆款指数：{t.get('score')}分 | 拍摄难度：{t.get('difficulty')}\n"
+        export += f"- 核心角度：{clean_text(t.get('angle',''))}\n"
+        export += f"- 前3秒钩子：{clean_text(t.get('hook',''))}\n"
+        export += f"- 内容大纲：{clean_text(t.get('outline',''))}\n"
+        export += f"- 平台建议：{clean_text(t.get('tip',''))}\n\n"
 
     st.markdown("---")
-    st.download_button("📥 导出 TXT", export, file_name=f"选题_{niche}.txt", use_container_width=True)
+    st.download_button("📥 导出全部选题（TXT）", export, file_name=f"选题_{niche}.txt", use_container_width=True)
