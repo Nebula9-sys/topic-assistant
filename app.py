@@ -1,5 +1,6 @@
 import streamlit as st
 from openai import OpenAI
+from datetime import date
 import json
 import re
 import time
@@ -48,45 +49,55 @@ st.markdown("""
 .label { color: #888; font-size: 13px; margin-top: 12px; margin-bottom: 4px; }
 .value { color: #ddd; font-size: 14px; line-height: 1.7; }
 hr { border-color: #333; margin: 24px 0; }
-
-/* 加载动画 */
-@keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.5; }
-}
-.loading-pulse {
-    animation: pulse 1.5s ease-in-out infinite;
-}
 </style>
 """, unsafe_allow_html=True)
 
 # ─────────────────────────────────────────
 # 次数限制功能
 # ─────────────────────────────────────────
+def get_daily_limit():
+    """获取每日限制次数"""
+    try:
+        if hasattr(st, 'secrets') and 'DAILY_LIMIT' in st.secrets:
+            return int(st.secrets['DAILY_LIMIT'])
+    except:
+        pass
+    return 3  # 默认每天3次
+
 def check_usage_limit():
     """检查今日使用次数"""
     today = str(date.today())
     
-    # 初始化使用记录
+    # 初始化
     if "usage_date" not in st.session_state:
         st.session_state["usage_date"] = today
         st.session_state["usage_count"] = 0
     
-    # 如果是新的一天，重置计数
+    # 新的一天重置
     if st.session_state["usage_date"] != today:
         st.session_state["usage_date"] = today
         st.session_state["usage_count"] = 0
     
     return st.session_state["usage_count"]
+
 def increment_usage():
     """增加使用次数"""
     st.session_state["usage_count"] += 1
+
 def get_remaining_uses():
     """获取剩余次数"""
     count = check_usage_limit()
-    limit = st.secrets.get("DAILY_LIMIT", 3) if hasattr(st, 'secrets') else 3
+    limit = get_daily_limit()
     return max(0, limit - count)
 
+def get_preset_api_key():
+    """获取预设的API Key"""
+    try:
+        if hasattr(st, 'secrets') and 'API_KEY' in st.secrets:
+            return st.secrets['API_KEY']
+    except:
+        pass
+    return None
 
 # ─────────────────────────────────────────
 # 侧边栏
@@ -95,44 +106,39 @@ with st.sidebar:
     st.title("⚙️ 配置")
     st.markdown("---")
     
-    # API Key 输入（可选）
+    # 用户自己的 API Key（可选）
     user_api_key = st.text_input("🔑 你的 API Key（选填）", type="password", placeholder="有自己的就填上")
     
     # 判断使用模式
-    has_own_key = bool(user_api_key)
+    has_own_key = bool(user_api_key.strip())
+    preset_key = get_preset_api_key()
     
     if has_own_key:
-        st.success("✅ 使用你的 Key，无次数限制")
-        api_key_to_use = user_api_key
+        st.success("✅ 使用你的 Key\n无次数限制")
+        api_key_to_use = user_api_key.strip()
+    elif preset_key:
+        remaining = get_remaining_uses()
+        st.info(f"🎁 使用预设 Key\n今日剩余：**{remaining}** 次")
+        api_key_to_use = preset_key
     else:
-        # 使用预设 Key
-        if hasattr(st, 'secrets') and 'API_KEY' in st.secrets:
-            remaining = get_remaining_uses()
-            st.info(f"🎁 使用预设 Key\n今日剩余：**{remaining}** 次")
-            api_key_to_use = st.secrets['API_KEY']
-        else:
-            st.warning("⚠️ 请填入你自己的 API Key\n获取：platform.deepseek.com")
-            api_key_to_use = None
+        st.warning("⚠️ 请填入你的 API Key\n获取：platform.deepseek.com")
+        api_key_to_use = None
     
     st.markdown("---")
     
-    # 改进：1-10 自由选择
+    # 生成数量：1-10
     topic_count = st.slider("🎯 生成数量", 1, 10, 5)
     
     st.markdown("---")
     
-    # 使用说明（根据模式显示不同内容）
     if not has_own_key:
         st.markdown("""
-        **💡 如何获取 API Key**
-        
-        1. 访问 [platform.deepseek.com](https://platform.deepseek.com)
-        2. 注册账号
-        3. 充值（deepseek官网充值，不涉及其他）
-        4. 创建 API Key
-        5. 粘贴到上方输入框
-        
-        或直接使用预设 Key（每日有限次数）
+**💡 如何获取 API Key**
+
+1. 访问 [platform.deepseek.com](https://platform.deepseek.com)
+2. 注册并充值（deeseek官网充值，不涉及其他，1元够用很久）
+3. 创建 API Key
+4. 粘贴到上方输入框
         """)
 
 # ─────────────────────────────────────────
@@ -193,7 +199,7 @@ def build_prompt(niche, audience, platform, style, hot, avoid, count):
 - title 纯文本，不用markdown格式
 - score 是60-99整数
 - difficulty 只能是：简单/中等/较难
-- outline 和 hook 用字符串，不要用数组
+- outline 和 hook 用字符串
 """
 
 # ─────────────────────────────────────────
@@ -258,20 +264,30 @@ fun_facts = [
 ]
 
 # ─────────────────────────────────────────
-# 生成按钮（流式响应版）
+# 生成按钮
 # ─────────────────────────────────────────
 if st.button("✨ 开始生成", type="primary", use_container_width=True):
-    if not api_key:
-        st.error("❌ 请填入 API Key")
+    # 检查 API Key
+    if not api_key_to_use:
+        st.error("❌ 请先填入 API Key，或联系开发者配置预设 Key")
         st.stop()
-    if not account_niche:
+    
+    # 检查输入
+    if not account_niche.strip():
         st.error("❌ 请填写账号定位")
         st.stop()
-    if not target_audience:
+    if not target_audience.strip():
         st.error("❌ 请填写目标受众")
         st.stop()
+    
+    # 检查次数限制（仅预设 Key）
+    if not has_own_key and preset_key:
+        remaining = get_remaining_uses()
+        if remaining <= 0:
+            st.error("❌ 今日次数已用完，请明天再来，或填入你自己的 API Key")
+            st.stop()
 
-    # 创建状态显示区域
+    # 状态显示
     status_container = st.container()
     
     with status_container:
@@ -279,16 +295,16 @@ if st.button("✨ 开始生成", type="primary", use_container_width=True):
         tip_box = st.empty()
         
         status_markdown.markdown("### 🤖 AI 正在思考...")
-        tip_box.info("💡 第一次生成可能需要 10-20 秒，请耐心等待")
+        tip_box.info("💡 生成需要 10-20 秒，请耐心等待")
 
     try:
         prompt = build_prompt(account_niche, target_audience, platform, content_style, hot_keywords, avoid_topics, topic_count)
         
-        client = OpenAI(api_key=api_key, base_url=selected["base_url"])
+        client = OpenAI(api_key=api_key_to_use, base_url="https://api.deepseek.com")
         
         # 流式调用
         response = client.chat.completions.create(
-            model=selected["model"],
+            model="deepseek-chat",
             messages=[
                 {"role": "system", "content": "你是爆款选题专家，只返回JSON数组。"},
                 {"role": "user", "content": prompt}
@@ -298,7 +314,7 @@ if st.button("✨ 开始生成", type="primary", use_container_width=True):
             max_tokens=4000
         )
         
-        # 逐步接收内容
+        # 接收内容
         full_content = ""
         char_count = 0
         tip_index = 0
@@ -309,10 +325,8 @@ if st.button("✨ 开始生成", type="primary", use_container_width=True):
                 full_content += content
                 char_count += len(content)
                 
-                # 更新状态（实时同步）
                 status_markdown.markdown(f"### ✍️ 正在生成... 已写出 **{char_count}** 字")
                 
-                # 每 150 字换一个提示
                 if char_count // 150 > tip_index:
                     tip_index = char_count // 150
                     tip_box.info(fun_facts[tip_index % len(fun_facts)])
@@ -324,6 +338,10 @@ if st.button("✨ 开始生成", type="primary", use_container_width=True):
             raw = re.sub(r'```\s*', '', raw)
         
         topics = json.loads(raw.strip())
+        
+        # 记录使用
+        if not has_own_key and preset_key:
+            increment_usage()
         
         # 完成
         status_markdown.markdown("### ✅ 生成完成！")
