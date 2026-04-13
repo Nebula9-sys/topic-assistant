@@ -137,6 +137,13 @@ if "免费" in use_mode:
     """, unsafe_allow_html=True)
     api_key_to_use = get_preset_key()
     is_free_mode = True
+
+    # 生成数量
+    topic_count = st.slider("🎯 生成数量", 1, 10, 5)
+    
+    st.markdown("---")
+
+    
     
 else:
     # 自己的 Key
