@@ -137,19 +137,7 @@ if "免费" in use_mode:
     """, unsafe_allow_html=True)
     api_key_to_use = get_preset_key()
     is_free_mode = True
-else:
-    # 自己的 Key
-    user_key = st.text_input("你的 API Key", type="password", placeholder="sk-xxxxxxxx")
-    api_key_to_use = user_key.strip() if user_key else None
-    is_free_mode = False
-    
-    if api_key_to_use:
-        st.markdown("""
-        <div style="background:linear-gradient(135deg, #1a2030 0%, #252a40 100%);padding:15px;border-radius:10px;border:1px solid #e94560;">
-            ✅ <b style="color:#fff;">自定义 Key 模式</b><br>
-            <span style="color:#aaa;">♾️ 无使用次数限制</span>
-        </div>
-        """, unsafe_allow_html=True)
+
 
     else:
         # 无预设 Key，只能用自己的
