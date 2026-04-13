@@ -3,7 +3,6 @@ from openai import OpenAI
 import json
 import re
 import time
-import random
 
 # ─────────────────────────────────────────
 # 页面配置
@@ -49,6 +48,15 @@ st.markdown("""
 .label { color: #888; font-size: 13px; margin-top: 12px; margin-bottom: 4px; }
 .value { color: #ddd; font-size: 14px; line-height: 1.7; }
 hr { border-color: #333; margin: 24px 0; }
+
+/* 加载动画 */
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+.loading-pulse {
+    animation: pulse 1.5s ease-in-out infinite;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -145,26 +153,6 @@ def clean_text(text):
     return text.strip()
 
 # ─────────────────────────────────────────
-# AI 调用
-# ─────────────────────────────────────────
-def generate_topics(api_key, base_url, model, prompt):
-    client = OpenAI(api_key=api_key, base_url=base_url)
-    response = client.chat.completions.create(
-        model=model,
-        messages=[
-            {"role": "system", "content": "你是爆款选题专家，只返回JSON数组。"},
-            {"role": "user", "content": prompt}
-        ],
-        temperature=0.85,
-        max_tokens=4000
-    )
-    raw = response.choices[0].message.content.strip()
-    if "```" in raw:
-        raw = re.sub(r'```json?\s*', '', raw)
-        raw = re.sub(r'```\s*', '', raw)
-    return json.loads(raw.strip())
-
-# ─────────────────────────────────────────
 # 渲染卡片
 # ─────────────────────────────────────────
 def render_card(topic):
@@ -197,17 +185,8 @@ def render_card(topic):
     """, unsafe_allow_html=True)
 
 # ─────────────────────────────────────────
-# 趣味提示语
+# 趣味知识
 # ─────────────────────────────────────────
-fun_tips = [
-    "🔍 正在分析同类账号爆款规律...",
-    "📊 正在计算选题爆款指数...",
-    "🎯 正在匹配目标用户痛点...",
-    "✂️ 正在优化前3秒钩子话术...",
-    "🧠 AI 正在头脑风暴中...",
-    "💡 正在提炼核心创意角度...",
-]
-
 fun_facts = [
     "💡 抖音完播率超过 30% 就算优秀",
     "💡 前 3 秒决定 80% 的完播率",
@@ -215,10 +194,12 @@ fun_facts = [
     "💡 晚上 8-10 点是最佳发布时间",
     "💡 情绪共鸣类内容传播力最强",
     "💡 热点话题要 24 小时内跟进",
+    "💡 评论区互动率高的视频更容易爆",
+    "💡 7-15 秒的视频完播率最高",
 ]
 
 # ─────────────────────────────────────────
-# 生成按钮
+# 生成按钮（流式响应版）
 # ─────────────────────────────────────────
 if st.button("✨ 开始生成", type="primary", use_container_width=True):
     if not api_key:
@@ -231,41 +212,76 @@ if st.button("✨ 开始生成", type="primary", use_container_width=True):
         st.error("❌ 请填写目标受众")
         st.stop()
 
-    progress_bar = st.progress(0)
-    status_text = st.empty()
-    tip_box = st.empty()
-
-    for i in range(4):
-        progress_bar.progress((i + 1) * 25)
-        status_text.markdown(f"### {fun_tips[i % len(fun_tips)]}")
-        tip_box.info(fun_facts[i % len(fun_facts)])
-        time.sleep(0.5)
-
-    status_text.markdown("### 🤖 AI 正在生成选题...")
-    tip_box.empty()
+    # 创建状态显示区域
+    status_container = st.container()
+    
+    with status_container:
+        status_markdown = st.empty()
+        tip_box = st.empty()
+        
+        status_markdown.markdown("### 🤖 AI 正在思考...")
+        tip_box.info("💡 第一次生成可能需要 10-20 秒，请耐心等待")
 
     try:
         prompt = build_prompt(account_niche, target_audience, platform, content_style, hot_keywords, avoid_topics, topic_count)
-        topics = generate_topics(api_key, selected["base_url"], selected["model"], prompt)
         
-        progress_bar.progress(100)
-        status_text.markdown("### ✅ 生成完成！")
-        time.sleep(0.3)
+        client = OpenAI(api_key=api_key, base_url=selected["base_url"])
         
-        progress_bar.empty()
-        status_text.empty()
+        # 流式调用
+        response = client.chat.completions.create(
+            model=selected["model"],
+            messages=[
+                {"role": "system", "content": "你是爆款选题专家，只返回JSON数组。"},
+                {"role": "user", "content": prompt}
+            ],
+            stream=True,
+            temperature=0.85,
+            max_tokens=4000
+        )
+        
+        # 逐步接收内容
+        full_content = ""
+        char_count = 0
+        tip_index = 0
+        
+        for chunk in response:
+            if chunk.choices[0].delta.content:
+                content = chunk.choices[0].delta.content
+                full_content += content
+                char_count += len(content)
+                
+                # 更新状态（实时同步）
+                status_markdown.markdown(f"### ✍️ 正在生成... 已写出 **{char_count}** 字")
+                
+                # 每 150 字换一个提示
+                if char_count // 150 > tip_index:
+                    tip_index = char_count // 150
+                    tip_box.info(fun_facts[tip_index % len(fun_facts)])
+        
+        # 解析
+        raw = full_content.strip()
+        if "```" in raw:
+            raw = re.sub(r'```json?\s*', '', raw)
+            raw = re.sub(r'```\s*', '', raw)
+        
+        topics = json.loads(raw.strip())
+        
+        # 完成
+        status_markdown.markdown("### ✅ 生成完成！")
+        tip_box.success(f"🎉 成功生成 {len(topics)} 个选题")
+        time.sleep(0.5)
+        status_container.empty()
         
         st.session_state["topics"] = topics
         st.session_state["last_niche"] = account_niche
+        st.rerun()
         
     except json.JSONDecodeError:
-        progress_bar.empty()
-        status_text.empty()
+        status_container.empty()
         st.error("❌ AI 返回格式错误，请重试")
         st.stop()
     except Exception as e:
-        progress_bar.empty()
-        status_text.empty()
+        status_container.empty()
         st.error(f"❌ 出错了：{e}")
         st.stop()
 
