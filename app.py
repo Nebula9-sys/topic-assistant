@@ -122,7 +122,7 @@ with st.sidebar:
         # 有预设 Key，显示两种选择
         use_mode = st.radio(
             "使用方式",
-            ["🎁 免费体验（每日3次）", "🔑 使用我的 API Key"],
+            ["🎁 免费体验（每日3次）", "🔑 使用你的 API Key"],
             label_visibility="collapsed"
         )
         
